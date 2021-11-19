@@ -1,0 +1,7 @@
+启动顺序
+
+Hadoop及hbase集群启动顺序 zookeepeer -> hadoop -> hbase
+
+停止顺序
+
+Hadoop及hbase集群关闭顺序 hbase -> hadoop -> zookeepeer
