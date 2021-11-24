@@ -1,0 +1,143 @@
+十、整合Phoenix
+
+1 Phoenix定义
+Phoenix是HBase的开源SQL皮肤。可以使用标准JDBC API代替HBase客户端API来创建表，插入数据和查询HBase数据。
+
+2 Phoenix特点
+1）容易集成：如Spark，Hive，Pig，Flume和Map Reduce；
+2）操作简单：DML命令以及通过DDL命令创建和操作表和版本化增量更改；
+3）支持HBase二级索引创建。
+
+3 Phoenix架构
+图片
+
+4）安装及配置
+#phoenix
+export PHOENIX_HOME=/opt/module/phoenix
+export PHOENIX_CLASSPATH=$PHOENIX_HOME
+export PATH=$PATH:$PHOENIX_HOME/bin
+
+复制server包并拷贝到各个节点的hbase/lib
+cd /opt/module/phoenix/
+
+cp /opt/module/phoenix/phoenix-5.0.0-HBase-2.0-server.jar /opt/module/hbase/lib/
+
+xsync /opt/module/hbase/lib/phoenix-5.0.0-HBase-2.0-server.jar
+
+胖客户端
+连接Phoenix 从zookeeper找到hbase的位置
+sqlline.py hadoop102,hadoop103,hadoop104:2181
+
+廋客户端
+queryserver.py start
+starting Query Server, logging to /tmp/phoenix/phoenix-honglang-queryserver.log
+sqlline-thin.py hadoop102:8765
+
+Phoenix Shell操作
+1）创建schema
+   默认情况下，在phoenix中不能直接创建schema。需要将如下的参数添加到Hbase中conf目录下的hbase-site.xml   和  phoenix中bin目录下的 hbase-site.xml中
+   <property>
+        <name>phoenix.schema.isNamespaceMappingEnabled</name>
+        <value>true</value>
+    </property>
+Phoenix shell操作文档
+
+10. 全局二级索引
+    所谓的全局二级索引,意味着建索引会创建一张索引表. 
+    在索引表中， 将索引列与原表中的rowkey组合起来作为索引表的rowkey.
+
+
+  CREATE TABLE IF NOT EXISTS student(
+  id VARCHAR primary key,
+  name VARCHAR,
+  addr VARCHAR);
+
+
+  explain select id from student ;   // FULL SCAN
+
+  explain select id from student where id = '1002' ;  //  POINT LOOKUP
+
+  explain select id from student where name = 'lixiaosi' ; // FULL SCAN
+
+  给name字段建索引
+  create index idx_student_name on student(name); 
+  explain select id from student where name = 'lixiaosi' ; // RANGE SCAN
+
+  explain select id ,name from student where id ='1001' ;  // POINT LOOKUP
+  explain select id ,name from student where name  ='lixiaosi' ; //RANGE SCAN
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //FULL SCAN
+
+  给name addr 建复合索引
+  drop index idx_student_name on student; 
+
+  create index idx_student_name on student(name,addr); 
+ 
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //RANGE SCAN
+
+  explain select id ,name ,addr from student where name ='lixiaosi' and addr = 'beijing'; //RANGE SCAN
+
+  explain select id ,name ,addr from student where addr = 'beijing'; //FULL SCAN
+  
+  explain select id ,name ,addr from student where addr = 'beijing' and name ='lixiaosi' ;//RANGE SCAN
+
+
+  给name列建索引包含addr列
+
+  drop index idx_student_name on student; 
+
+  create index idx_student_name on student(name) include(addr);
+
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //RANGE SCAN
+
+
+11. 本地二级索引
+  drop index idx_student_name on student; 
+
+  create local index idx_student_name on student(name); 
+
+  explain select id ,name ,addr  from student where name  ='lixiaosi' ; //RANGE SCAN
+
+12. hive与Hbase 整合
+
+1) 在hive中建表，对应着在hbase中也建表
+CREATE TABLE hive_hbase_emp_table(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES ("hbase.columns.mapping" = ":key,info:ename,info:job,info:mgr,info:hiredate,info:sal,info:comm,info:deptno")
+TBLPROPERTIES ("hbase.table.name" = "hbase_emp_table");
+
+
+CREATE TABLE emp(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+row format delimited fields terminated by '\t';
+
+
+2） Hbase中已经有表， hive建表进行关联
+CREATE EXTERNAL TABLE relevance_hbase_emp(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+STORED BY 
+'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES ("hbase.columns.mapping" = 
+":key,info:ename,info:job,info:mgr,info:hiredate,info:sal,info:comm,info:deptno") 
+TBLPROPERTIES ("hbase.table.name" = "hbase_emp_table");

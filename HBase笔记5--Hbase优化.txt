@@ -1,0 +1,101 @@
+九、HBase优化
+1、预分区
+每一个region维护着startRow与endRowKey，如果加入的数据符合某个region维护的rowKey范围，则该数据交给这个region维护。那么依照这个原则，我们可以将数据所要投放的分区提前大致的规划好，以提高HBase性能。
+1.手动设定预分区
+hbase> create 'staff1','info',SPLITS => ['1000','2000','3000','4000']
+2.生成16进制序列预分区
+create 'staff2','info',{NUMREGIONS => 15, SPLITALGO => 'HexStringSplit'}
+3.按照文件中设置的规则预分区
+创建splits.txt文件内容如下：
+aaaa
+bbbb
+cccc
+dddd
+然后执行：
+create 'staff3','info',SPLITS_FILE => 'splits.txt'
+
+2、RowKey设计
+一条数据的唯一标识就是rowkey，那么这条数据存储于哪个分区，取决于rowkey处于哪个一个预分区的区间内，设计rowkey的主要目的 ，就是让数据均匀的分布于所有的region中，在一定程度上防止数据倾斜。
+
+1）.生成随机数、hash、散列值
+原则：唯一性，散列性，长度
+
+场景：大量的通话数据：
+1388888（主叫） 1399999999（被叫） 2021-05-14 12：12：12 360 .。。。
+业务：查询某个用户 某天某月 某年的通话记录
+预计：规划50个分区，
+-无穷大 ~ 00|
+00| ~01|
+01|~02|。。。
+分析：假如将某个用户某天的数据存到一个分区中，查某天的数据只需要扫描一个分区（太分散了）
+假如将某个用户某月的数据存到一个分区中，查某天某月的数据只需要扫描一个分区（可以）
+
+rowkey的设计可以用用户的某月和分区数取余得到一个0x数字，然后加入到rowkey的最前面
+rowkey : 01_1388888_2021-05-14 12:12:12  -> 1388888_2021-05%分区数 = 01
+               03_1377777_2021-05-14 12:12:12  -> 1388888_2021-05%分区数 = 03
+
+
+验证：查询13888888用户在2020年8月的通话记录
+1）先计算分区号
+13888888_2020-08 %50  = 04
+2)获得rowkey
+04_13888888_2020-08-.........
+3)scan 
+scan "teldate",STARTROW=>'04_13888888_2020-08',STOPROW=>'04_13888888_2020-08|'
+
+查询13888888用户在2020年8月的通话记录和09月的通话记录
+1）先计算分区号
+13888888_2020-08 %50  = 04
+13888888_2020-09 %50  = 06
+2)获得rowkey
+04_13888888_2020-08-.........
+06_13888888_2020-09-.........
+3)scan 
+scan "teldate",STARTROW=>'04_13888888_2020-08',STOPROW=>'04_13888888_2020-08|'
+scan "teldate",STARTROW=>'06_13888888_2020-09',STOPROW=>'06_13888888_2020-09|'
+
+3、内存优化
+HBase操作过程中需要大量的内存开销，毕竟Table是可以缓存在内存中的，但是不建议分配非常大的堆内存，因为GC过程持续太久会导致RegionServer处于长期不可用状态，一般16~36G内存就可以了，如果因为框架占用内存过高导致系统内存不足，框架一样会被系统服务拖死。
+
+4、基础优化
+1）Zookeeper会话超时时间
+hbase-site.xml
+属性：zookeeper.session.timeout
+解释：默认值为90000毫秒（90s）。当某个RegionServer挂掉，90s之后Master才能察觉到。可适当减小此值，以加快Master响应，可调整至60000毫秒。
+
+2）设置RPC监听数量
+hbase-site.xml
+属性：hbase.regionserver.handler.count
+解释：默认值为30，用于指定RPC监听的数量，可以根据客户端的请求数进行调整，读写请求较多时，增加此值
+
+3）手动控制Major Compaction
+hbase-site.xml
+属性：hbase.hregion.majorcompaction
+解释：默认值：604800000秒（7天）， Major Compaction的周期，若关闭自动Major Compaction，可将其设为0
+
+4）优化HStore文件大小
+hbase-site.xml
+属性：hbase.hregion.max.filesize
+解释：默认值10737418240（10GB），如果需要运行HBase的MR任务，可以减小此值，因为一个region对应一个map任务，如果单个region过大，会导致map任务执行时间过长。该值的意思就是，如果HFile的大小达到这个数值，则这个region会被切分为两个Hfile。
+
+5）优化HBase客户端缓存
+hbase-site.xml
+属性：hbase.client.write.buffer
+解释：默认值2097152bytes（2M）用于指定HBase客户端缓存，增大该值可以减少RPC调用次数，但是会消耗更多内存，反之则反之。一般我们需要设定一定的缓存大小，以达到减少RPC次数的目的。
+
+6）指定scan.next扫描HBase所获取的行数
+hbase-site.xml
+属性：hbase.client.scanner.caching
+解释：用于指定scan.next方法获取的默认行数，值越大，消耗内存越大。
+
+7）BlockCache占用RegionServer堆内存的比例
+hbase-site.xml
+属性：hfile.block.cache.size
+解释：默认0.4，读请求比较多的情况下，可适当调大
+
+8）MemStore占用RegionServer堆内存的比例
+hbase-site.xml
+属性：hbase.regionserver.global.memstore.size
+解释：默认0.4，写请求较多的情况下，可适当调大
+
+

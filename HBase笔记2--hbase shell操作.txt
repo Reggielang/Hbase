@@ -21,8 +21,12 @@ drop_namespace "test01"
 
 对数据的操作
 put 'stu','1001','info:name','zhangsan'
-put 'stu','1001','info:sex','man'
-put 'stu','1001','info:address','beijing'
+put 'stu','1001','info:tel','1888888888'
+
+
+put 'stu','1002','msg:salary','10000'
+put 'stu','1002','msg:sex','female'
+put 'stu','1002','msg:address','shanghai'
 
 put 'stu','1002','info:name','lisi'
 put 'stu','1002','info:sex','female'

@@ -1,0 +1,112 @@
+1. 创建schema(库)
+   create schema if not exists mydb ;
+
+   create schema if not exists "mydb3";
+
+2. 删除schema
+   drop schema if exists "mydb3";   
+
+3. 创建表
+  CREATE TABLE IF NOT EXISTS student(
+  id VARCHAR primary key,
+  name VARCHAR,
+  addr VARCHAR);
+
+4. 插入(修改)数据
+  upsert into student (id, name, addr) values('1001','zhangsan','beijing');
+  upsert into student (id, name, addr) values('1002','lisi','shanghai');
+  upsert into student (id, name, addr) values('1002','lixiaosi','shanghai');
+  upsert into student (id, name, addr) values('1003','wangwu','shanghai');
+  upsert into student (id, name, addr) values('1004',null,null);
+
+5. 查询数据
+  select id ,name , addr from student; 
+  select id ,name , addr from student where name  = 'lixiaosi'  ;
+
+6. 删除数据
+  delete from student where id = '1001' ;  
+
+指定多个列的联合作为RowKey
+7. 联合主键
+CREATE TABLE IF NOT EXISTS us_population (
+State CHAR(2) NOT NULL,
+City VARCHAR NOT NULL,
+Population BIGINT
+CONSTRAINT my_pk PRIMARY KEY (state, city));
+
+  upsert into us_population values('NY','New York',8143197) ;
+  upsert into us_population values('CA','Los Angeles',3844829) ;
+
+
+8. 表的映射
+
+1) Hbase中没有表,phoenix中创建表会同时在hbase中也创建表
+
+2) Hbase中有表, 可以在phoenix中创建视图(只读)进行映射--视图映射
+   create 'emp','info'
+   put 'emp','1001','info:name','zhangsan'
+   put 'emp','1001','info:addr','beijing'
+
+   create view "emp"(
+     id varchar primary key , 
+     "info"."name" varchar ,
+     "info"."addr" varchar
+   )
+
+   select * from "emp" ; 
+   select id , "name","addr" from "emp" ;
+
+   upsert into "emp" values('1002','lisi','shanghai');
+
+   drop view "emp";
+Phoenix创建的视图是只读的，所以只能用来做查询，无法通过视图对源数据进行修改等操作。在phoenix中创建关联test表的视图
+
+3) Hbase中有表, 可以在phoenix中创建表进行映射 --表映射
+
+   create table "emp"(
+     id varchar primary key , 
+     "info"."name" varchar ,
+     "info"."addr" varchar
+   )
+   COLUMN_ENCODED_BYTES = NONE;（加入这个之后，phoenix不会对列进行编码处理）
+
+
+   select * from "emp" ; 
+   select id , "name","addr" from "emp" ; 
+
+   drop table "emp";  
+
+
+ 9. 数值问题
+用什么客户端存的数据就用什么查！
+
+phoenix存,phoenix查.没有问题
+phoenix存,hbase查.有问题
+hbase存,hbase查,没有问题
+hbase存,phoenix查,有问题
+
+ create table test (
+   id varchar primary key , 
+   name varchar ,
+   salary integer 
+ )
+ COLUMN_ENCODED_BYTES = NONE;  
+
+ upsert into test values('1001','zs',123456); 
+
+ put 'TEST','1002','0:NAME','ls'
+ put 'TEST','1002','0:SALARY',Bytes.toBytes(456789)   // Long 
+
+
+  create table test1 (
+   id varchar primary key , 
+   name varchar ,
+   salary UNSIGNED_INT 
+ )
+ COLUMN_ENCODED_BYTES = NONE;  
+
+  upsert into test1 values('1001','zs',123456); 
+
+  put 'TEST1','1002','0:NAME','ls'
+  put 'TEST1','1002','0:SALARY',Bytes.toBytes(456789)   // Long 
+
