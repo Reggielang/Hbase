@@ -46,7 +46,7 @@ WITH SERDEPROPERTIES ("hbase.columns.mapping" = ":key,info:ename,info:job,info:m
 TBLPROPERTIES ("hbase.table.name" = "hbase_emp_table");
 
 2）不能直接从文件中load数据，因为文件的数据不是K-V类型，hbase不会认识。
-继续在hive中创建一个满足文件格式的表
+继续在hive中创建一个满足文件格式的临时中间表
 CREATE TABLE emp(
 empno int,
 ename string,
@@ -58,8 +58,9 @@ comm double,
 deptno int)
 row format delimited fields terminated by '\t';
 
-3）load加载数据到刚才创建的表中。
-最后把数据用insert的方式把数据加入到对应的hbase表中。
+3）向Hive中间表中load数据。
+load data local inpath '/opt/module/data/emp.txt' into table emp;
+通过insert命令将中间表中的数据导入到Hive关联Hbase的那张表中。
 insert into hive_hbase_emp_table select * from emp;
 
 关联情况2：
