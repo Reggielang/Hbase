@@ -1,0 +1,82 @@
+十一、hive与Hbase 整合
+
+HBase与Hive的对比
+1.Hive
+(1) 数据分析工具
+Hive的本质其实就相当于将HDFS中已经存储的文件在Mysql中做了一个双射关系，以方便使用HQL去管理查询
+(2) 用于数据分析、清洗
+Hive适用于离线的数据分析和清洗，延迟较高。
+(3) 基于HDFS、MapReduce
+Hive存储的数据依旧在DataNode上，编写的HQL语句终将是转换为MapReduce代码执行。
+
+2．HBase
+(1) 数据库
+是一种面向列族存储的非关系型数据库。
+(2) 用于存储结构化和非结构化的数据
+适用于单表非关系型数据的存储，不适合做关联查询，类似JOIN等操作。
+(3) 基于HDFS
+数据持久化存储的体现形式是HFile，存放于DataNode中，被ResionServer以region的形式进行管理。
+(4) 延迟较低，接入在线业务使用
+面对大量的企业数据，HBase可以直线单表大量数据的存储，同时提供了高效的数据访问速度。
+
+HBase与Hive集成使用
+在hive-site.xml中添加zookeeper的属性，如下：
+    <property>
+        <name>hive.zookeeper.quorum</name>
+        <value>hadoop102,hadoop103,hadoop104</value>
+    </property>
+    <property>
+        <name>hive.zookeeper.client.port</name>
+        <value>2181</value>
+    </property>
+
+关联情况1：
+1) 在hive中建表，对应着在hbase中也建表
+CREATE TABLE hive_hbase_emp_table(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES ("hbase.columns.mapping" = ":key,info:ename,info:job,info:mgr,info:hiredate,info:sal,info:comm,info:deptno")
+TBLPROPERTIES ("hbase.table.name" = "hbase_emp_table");
+
+2）不能直接从文件中load数据，因为文件的数据不是K-V类型，hbase不会认识。
+继续在hive中创建一个满足文件格式的表
+CREATE TABLE emp(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+row format delimited fields terminated by '\t';
+
+3）load加载数据到刚才创建的表中。
+最后把数据用insert的方式把数据加入到对应的hbase表中。
+insert into hive_hbase_emp_table select * from emp;
+
+关联情况2：
+如果说在Hbase中有表了，那么可以直接在hive中创建外部表进行关联。
+注意：因为外部表删除时不会删除元数据，在这里只是用hive来分析数据，不需要管理。所以外部表即可。
+2） Hbase中已经有表， hive建表进行关联
+CREATE EXTERNAL TABLE relevance_hbase_emp(
+empno int,
+ename string,
+job string,
+mgr int,
+hiredate string,
+sal double,
+comm double,
+deptno int)
+STORED BY 
+'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES ("hbase.columns.mapping" = 
+":key,info:ename,info:job,info:mgr,info:hiredate,info:sal,info:comm,info:deptno") 
+TBLPROPERTIES ("hbase.table.name" = "hbase_emp_table");
